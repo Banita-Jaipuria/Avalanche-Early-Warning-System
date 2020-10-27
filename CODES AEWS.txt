@@ -1,0 +1,116 @@
+#include <ESP8266WiFi.h>
+#include <FirebaseArduino.h>
+
+// Set these to run example.
+#define FIREBASE_HOST "avalanche-early-warning-system.firebaseio.com"
+#define FIREBASE_AUTH "DW1NBlSiwWR6sXSU5yy7FgVsfYys4bDGNl1zRX8X"
+#define WIFI_SSID "skynite"
+#define WIFI_PASSWORD "tangocharlie"
+#include <DallasTemperature.h>
+
+#include <OneWire.h>
+#define ONE_WIRE_BUS D4 //D4 pin of nodemcu
+#include <Adafruit_ADXL345_U.h>
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
+
+OneWire OneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&OneWire);  
+const int Red = D5;
+const int Green = D7;
+const int Blue = D8;
+float temp=0.0;
+
+void setup()
+{
+  Serial.begin(115200); 
+ WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("connecting");
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(500);
+  }
+  Serial.println();
+  Serial.print("connected: ");
+  Serial.println(WiFi.localIP());
+  
+  Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
+  sensors.begin();
+  pinMode(Red, OUTPUT);
+  pinMode(Green, OUTPUT);
+  pinMode(Blue, OUTPUT);
+  if(!accel.begin())
+  {
+    Serial.println("Ooops, no ADXL345 detected ... Check your wiring!");
+    while(1);
+  }
+  Serial.println("ADXL started");
+  accel.setRange(ADXL345_RANGE_2_G);
+}
+
+
+void loop()
+{
+  sensors.requestTemperatures();                
+  Serial.println("Temperature is: ");
+  Serial.println(sensors.getTempCByIndex(0));   
+  //delay(500);
+  temp=sensors.getTempCByIndex(0);
+  if(temp<25)
+  {
+  analogWrite(Red, 0);
+  analogWrite(Green,255 );
+  analogWrite(Blue, 0);  
+  }
+  else if(temp>=25.0 && temp<=45.0)
+  {
+  analogWrite(Red, 0);
+  analogWrite(Green, 0);
+  analogWrite(Blue, 255); 
+  }
+  else 
+  {
+   analogWrite(Red, 255);
+   analogWrite(Green,0);
+    analogWrite(Blue,0); 
+  }
+  sensors_event_t event; 
+  accel.getEvent(&event);
+ 
+  Serial.print((event.acceleration.x)/9.8);
+  Serial.print(",");
+  Serial.print((event.acceleration.y)/9.8);
+  Serial.print(",");
+  Serial.println((event.acceleration.z)/9.8);
+  if (Firebase.failed()) {
+      Serial.print("setting /number failed:");
+      Serial.println(Firebase.error());  
+      return;
+  }
+  delay(2000);
+  
+  Firebase.setFloat("temperature", temp);
+  if(temp<=25)
+  {
+   Firebase.setString("msg","The Place is Safe"); 
+  }
+  else if(temp>25.0 && temp<45.0)
+  {
+    Firebase.setString("msg","Warning Vacate the place!!Vacate the place!!");
+    } 
+    else
+    {
+      Firebase.setString("msg","Avalanche!!Avalanche!!");
+    } 
+  Firebase.setFloat("Acc X", ((event.acceleration.x)/9.8));
+  Firebase.setFloat("Acc Y", ((event.acceleration.y)/9.8));
+  Firebase.setFloat("Acc Z", ((event.acceleration.z)/9.8));
+  
+  if (Firebase.failed()) {
+      Serial.print("setting /number failed:");
+      Serial.println(Firebase.error());  
+      return;
+  }
+  delay(2000);
+}
